@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Personal test scripts
+script_tests.py
+.bash_history
+playhex-games-2025-12-07.json
+processed_11x11_games.json
+
 # Distribution / packaging
 .Python
 build/
