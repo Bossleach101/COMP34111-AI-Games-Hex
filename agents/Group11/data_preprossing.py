@@ -8,7 +8,7 @@ print(f"Total games loaded: {len(data)}")
 
 eleven_games = [game  for game in data if game['boardsize'] == 11
                 and game['allowSwap'] == True 
-                and (game['outcome'] == 'path' or game['outcome'] == 'resign')
+                and (game['outcome'] == 'path')
                 and game['movesCount'] > 0]
 
 print(f"Total 11x11 games: {len(eleven_games)}")
@@ -42,15 +42,21 @@ example_position = convert_moves_to_position(eleven_games[0]['moves'])
 print(example_position)
 
 
-json_out = []
+json_out_batch = []
 
 for game in eleven_games:
-    position = convert_moves_to_position(game['moves'])
-    outcome = 1 if game['winner'] == 'red' else -1
-    json_out.append({
-        'position': position.tolist(),
-        'outcome': outcome
-    })
+    game_moves = ''
+    for move in game['moves'].split(' '):
+        game_moves += move + ' '
+        position = convert_moves_to_position(game_moves.strip())
+        outcome = 1 if game['winner'] == 'red' else -1
     
+        json_out_batch.append({
+            'position': position.tolist(),
+            'outcome': outcome
+        })
+
 with open('processed_11x11_games.json', 'w') as f:
     json.dump(json_out, f)
+    
+print("Done")
