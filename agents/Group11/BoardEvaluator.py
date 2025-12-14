@@ -1,35 +1,160 @@
-from src.AgentBase import AgentBase
-from src.Board import Board
-from src.Colour import Colour
-from src.Move import Move
-
-import torch
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+import json
+import os
+from utils import HexPlanes
 
-class BoardEvaluator:
+class HexConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, bias=True):
+        super(HexConv2d, self).__init__()
+
+        # Standard 2D Convolution
+        # We assume kernel_size=3 for a standard hex neighborhood
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, padding=padding, bias=bias)
+
+        # Create the binary mask
+        # Shape: (out_channels, in_channels, 3, 3)
+        self.register_buffer('mask', torch.ones_like(self.conv.weight))
+
+        # Zero out the "non-hex" corners.
+        # Note: Which corners you zero depends on how you skew your board.
+        # Common Axial skew ignores Top-Left (0,0) and Bottom-Right (2,2)
+        self.mask[:, :, 0, 0] = 0
+        self.mask[:, :, 2, 2] = 0
+
+    def forward(self, x):
+        # Apply the mask to the weights
+        # We multiply the weights by the mask to ensure the "dead" corners
+        # always stay zero and have zero gradient.
+        masked_weight = self.conv.weight * self.mask
+
+        return F.conv2d(x, masked_weight, self.conv.bias,
+                        self.conv.stride, self.conv.padding,
+                        self.conv.dilation, self.conv.groups)
+
+class HexNet(nn.Module):
+    def __init__(self):
+        super(HexNet, self).__init__()
+        self.conv1 = HexConv2d(4, 64)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = HexConv2d(64, 64)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = HexConv2d(64, 64)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.conv4 = HexConv2d(64, 64)
+        self.bn4 = nn.BatchNorm2d(64)
+        
+        # Policy Head
+        self.p_conv = HexConv2d(64, 2)
+        self.p_bn = nn.BatchNorm2d(2)
+        self.p_fc = nn.Linear(2 * 11 * 11, 121)
+        
+        # Value Head
+        self.v_conv = HexConv2d(64, 1)
+        self.v_bn = nn.BatchNorm2d(1)
+        self.v_fc1 = nn.Linear(1 * 11 * 11, 64)
+        self.v_fc2 = nn.Linear(64, 1)
+
+    def forward(self, x):
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = F.relu(self.bn4(self.conv4(x)))
+        
+        # Policy
+        p = F.relu(self.p_bn(self.p_conv(x)))
+        p = p.view(-1, 2 * 11 * 11)
+        p = self.p_fc(p)
+        # p = F.log_softmax(p, dim=1) # Return logits
+        
+        # Value
+        v = F.relu(self.v_bn(self.v_conv(x)))
+        v = v.view(-1, 1 * 11 * 11)
+        v = F.relu(self.v_fc1(v))
+        v = torch.tanh(self.v_fc2(v))
+        
+        return p, v
+
+class HexDataset(Dataset):
+    def __init__(self, data_path):
+        with open(data_path, 'r') as f:
+            self.data = json.load(f)
+            
+    def __len__(self):
+        return len(self.data)
+        
+    def __getitem__(self, idx):
+        item = self.data[idx]
+        board = np.array(item['position'], dtype=np.int8)
+        outcome = item['outcome']
+        
+        # Infer current player
+        count_1 = np.sum(board == 1)
+        count_neg_1 = np.sum(board == -1)
+        current_player = 1 if count_1 == count_neg_1 else -1
+        
+        features = HexPlanes.get_all_feature_planes(board, current_player)
+        
+        # Convert to tensor
+        features = torch.from_numpy(features).float()
+        outcome = torch.tensor(outcome, dtype=torch.float32)
+        
+        # Dummy policy target since it's missing in the dataset
+        policy_target = torch.zeros(121, dtype=torch.float32) 
+        
+        return features, policy_target, outcome
+
+def train(model, device, train_loader, optimizer, epoch):
+    model.train()
+    for batch_idx, (data, target_policy, target_value) in enumerate(train_loader):
+        data, target_policy, target_value = data.to(device), target_policy.to(device), target_value.to(device)
+        optimizer.zero_grad()
+        output_policy, output_value = model(data)
+        
+        # Loss
+        # Value loss: MSE
+        loss_v = F.mse_loss(output_value.view(-1), target_value)
+        
+        # Policy loss: CrossEntropy (masked here because we don't have targets)
+        loss_p = 0 
+        
+        loss = loss_v + loss_p
+        loss.backward()
+        optimizer.step()
+        
+        if batch_idx % 100 == 0:
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+
+def main():
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    print(f"Using device: {device}")
     
-    _boaard_size = 11
+    # Path to data
+    data_path = os.path.join(os.path.dirname(__file__), 'data/train_11x11_games.json')
     
+    if not os.path.exists(data_path):
+        print(f"Data file not found at {data_path}")
+        return
+
+    dataset = HexDataset(data_path)
+    train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
     
-    # Inputs Board and the colour whose turn it is
-    @staticmethod
-    def get_board_evaluation(board: Board, colour: Colour) -> float:
+    model = HexNet().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    
+    for epoch in range(1, 11):
+        train(model, device, train_loader, optimizer, epoch)
         
-        red = [[0 for _ in range(BoardEvaluator._boaard_size)] for _ in range(BoardEvaluator._boaard_size)]
-        blue = [[0 for _ in range(BoardEvaluator._boaard_size)] for _ in range(BoardEvaluator._boaard_size)]
-        
-        for i in range(board.size):
-            for j in range(board.size):
-                tile = board.tiles[i][j]
-                if tile.colour == Colour.RED:
-                    red[i][j] = 1
-                elif tile.colour == Colour.BLUE:
-                    blue[i][j] = 1
-                    
-                    
-        if colour == Colour.RED:
-            colour = [[1 for _ in range(BoardEvaluator._boaard_size)] for _ in range(BoardEvaluator._boaard_size)]
-        else:
-            colour = [[0 for _ in range(BoardEvaluator._boaard_size)] for _ in range(BoardEvaluator._boaard_size)]    
-        
-        
+    # Save model
+    torch.save(model.state_dict(), "hex_model.pth")
+    print("Model saved to hex_model.pth")
+
+if __name__ == "__main__":
+    main()
+
+
