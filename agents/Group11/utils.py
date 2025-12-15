@@ -48,54 +48,55 @@ class HexPlanes:
         
 
         bridge_plane = np.zeros((HexPlanes._BOARD_SIZE, HexPlanes._BOARD_SIZE), dtype=np.float32)
+        N = HexPlanes._BOARD_SIZE
         
-        # Get all coordinates where the player currently has stones
-        # distinct_stones is a list of (r, q) or (x, y) depending on your setup
-        # Assuming board_state is indexed [r][q] (row, col)
-        rows, cols = np.where(board_state == player_color)
-        my_stones = list(zip(rows, cols))
-
-        for r, q in my_stones:
-            # Check all 6 possible bridge directions from this stone
-            for target_diff, intermediates in HexPlanes._BRIDGE_OFFSETS:
+        player_mask = (board_state == player_color)
+        empty_mask = (board_state == 0)
+        
+        for (dq, dr), intermediates in HexPlanes._BRIDGE_OFFSETS:
+            # Note: BRIDGE_OFFSETS are (q, r) but board is (r, q)
+            # So dr corresponds to index 0 change, dq to index 1 change?
+            # Wait, usually board[row][col] -> board[r][q].
+            # If offsets are (q, r), then dr is row offset, dq is col offset.
+            # Let's assume (q, r) -> (col_offset, row_offset)
+            
+            # Calculate valid range for start stone (r, q)
+            min_r, max_r = 0, N
+            min_q, max_q = 0, N
+            
+            offsets = [(0,0), (dr, dq)] + intermediates
+            
+            # Adjust bounds based on offsets
+            for or_, oq in offsets:
+                # We need 0 <= r + or_ < N
+                min_r = max(min_r, -or_)
+                max_r = min(max_r, N - or_)
+                min_q = max(min_q, -oq)
+                max_q = min(max_q, N - oq)
+            
+            if min_r >= max_r or min_q >= max_q:
+                continue
                 
-                # 1. Identify the Target Stone location
-                target_r = r + target_diff[1] # Note: Ensure r/q mapping matches your grid
-                target_q = q + target_diff[0] # standard axial is often (q, r)
-                
-                # Boundary Check: Is target on the board?
-                if not (0 <= target_r < HexPlanes._BOARD_SIZE and 0 <= target_q < HexPlanes._BOARD_SIZE):
-                    continue
-                    
-                # Friend Check: Is there a friendly stone at the target?
-                # Note: We only need to check "forward" directions to avoid double counting,
-                # but checking all is safer and easier to debug.
-                if board_state[target_r, target_q] == player_color:
-                    
-                    # 2. Check the Intermediates
-                    valid_bridge = True
-                    int_coords = []
-                    
-                    for mid_diff in intermediates:
-                        mid_r = r + mid_diff[1]
-                        mid_q = q + mid_diff[0]
-                        
-                        # If intermediate is off board, it's not a valid bridge
-                        if not (0 <= mid_r < HexPlanes._BOARD_SIZE and 0 <= mid_q < HexPlanes._BOARD_SIZE):
-                            valid_bridge = False
-                            break
-                        
-                        # If intermediate is NOT empty, the bridge is broken
-                        if board_state[mid_r, mid_q] != 0:
-                            valid_bridge = False
-                            break
-                            
-                        int_coords.append((mid_r, mid_q))
-                    
-                    # 3. Mark the Plane
-                    if valid_bridge:
-                        for (mr, mq) in int_coords:
-                            bridge_plane[mr, mq] = 1.0
+            # Base slice for start stone
+            base_slice = (slice(min_r, max_r), slice(min_q, max_q))
+            
+            # Check start stone
+            valid_bridges = player_mask[base_slice]
+            
+            # Check target stone
+            target_slice = (slice(min_r + dr, max_r + dr), slice(min_q + dq, max_q + dq))
+            valid_bridges = valid_bridges & player_mask[target_slice]
+            
+            # Check intermediates
+            for ir, iq in intermediates:
+                int_slice = (slice(min_r + ir, max_r + ir), slice(min_q + iq, max_q + iq))
+                valid_bridges = valid_bridges & empty_mask[int_slice]
+            
+            # Mark the Plane
+            if np.any(valid_bridges):
+                for ir, iq in intermediates:
+                    dest_slice = (slice(min_r + ir, max_r + ir), slice(min_q + iq, max_q + iq))
+                    bridge_plane[dest_slice] = np.maximum(bridge_plane[dest_slice], valid_bridges)
 
         return bridge_plane
     
@@ -109,14 +110,30 @@ class HexPlanes:
         return feature_planes
 
 
+
+        
+
 if __name__ == "__main__":
     
     board = np.zeros((11, 11), dtype=int)
-    board[0, 0] = -1 
-    board[0, 1] = 0
-    board[1, 1] = -1 
-    board[2, 0] = -1
-    board[5, 5] = 1
-    board[6, 5] = 1
-    board[5, 6] = 1 
-    print(HexPlanes.get_all_feature_planes(board, -1))
+    board[4,5] = 1
+    board[4,7] = 1
+    board[4,8] = -1
+    board[4,9] = 1
+
+    board[5,2] = -1
+    board[5,5] = -1
+    board[5,7] = -1
+    board[5,8] = -1
+    board[5,9] = 1
+
+    board[6,3] = -1
+    board[6,6] = -1
+    board[6,7] = 1
+    board[6,8] = -1
+    board[6,9] = 1
+
+    board[7,1] = 1
+
+    board[8,7] = -1
+    board[8,8] = 1

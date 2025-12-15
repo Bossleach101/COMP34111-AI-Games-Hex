@@ -129,7 +129,49 @@ def train(model, device, train_loader, optimizer, epoch):
         if batch_idx % 100 == 0:
             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
 
-def main():
+class HexModelInference:
+    """
+    Class to handle model inference for Hex game states.
+    """
+    def __init__(self, modelpath):
+        use_cuda = torch.cuda.is_available()
+        device = torch.device("cuda" if use_cuda else "cpu")
+        self.model = HexNet()
+        self.model.load_state_dict(torch.load(modelpath, map_location=device))
+        self.model.to(device)
+        self.model.eval()
+        # Optimize model with TorchScript
+        try:
+            self.model = torch.jit.script(self.model)
+        except Exception as e:
+            print(f"Warning: Could not script model: {e}")
+        self.device = device
+        self.model.eval()
+
+    def predict(self, board_state, current_player):
+        """
+        Predicts the policy and value for a given board state.
+        
+        Args:
+            board_state: 11x11 numpy array (0=Empty, 1=Black, -1=White)
+            current_player: The value representing the current player (e.g., 1 or -1)
+        
+        Returns:
+            policy: numpy array of shape (121,) representing move probabilities
+            value: float representing the expected outcome for the current player
+        """
+        feature_planes = HexPlanes.get_all_feature_planes(board_state, current_player)
+        input_tensor = torch.from_numpy(feature_planes).unsqueeze(0).float().to(self.device)  # Shape: (1, 4, 11, 11)
+
+        with torch.no_grad():
+            output_policy, output_value = self.model(input_tensor)
+        
+        policy = output_policy.cpu().numpy().reshape(11, 11)  # Shape: (11, 11)
+        value = output_value.cpu().item()  # Scalar
+        
+        return policy, value
+
+def train():
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     print(f"Using device: {device}")
@@ -153,6 +195,37 @@ def main():
     # Save model
     torch.save(model.state_dict(), "hex_model.pth")
     print("Model saved to hex_model.pth")
+
+def main():
+    board = np.zeros((11, 11), dtype=int)
+    board[4,5] = 1
+    board[4,7] = 1
+    board[4,8] = -1
+    board[4,9] = 1
+
+    board[5,2] = -1
+    board[5,5] = -1
+    board[5,7] = -1
+    board[5,8] = -1
+    board[5,9] = 1
+
+    board[6,3] = -1
+    board[6,6] = -1
+    board[6,7] = 1
+    board[6,8] = -1
+    board[6,9] = 1
+
+    board[7,1] = 1
+
+    board[8,7] = -1
+    board[8,8] = 1
+
+    import os
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hex_model.pth")
+    predictor = HexModelInference(model_path)
+    policy, value = predictor.predict(board, current_player=-1)
+    print("Predicted Policy:", policy)
+    print("Predicted Value:", value)
 
 if __name__ == "__main__":
     main()
