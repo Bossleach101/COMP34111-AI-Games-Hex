@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import random
 
 with(open('playhex-games-2025-12-07.json', 'r') as f):
     data = json.load(f)
@@ -8,7 +9,7 @@ print(f"Total games loaded: {len(data)}")
 
 eleven_games = [game  for game in data if game['boardsize'] == 11
                 and game['allowSwap'] == True 
-                and (game['outcome'] == 'path' or game['outcome'] == 'resign')
+                and (game['outcome'] == 'path')
                 and game['movesCount'] > 0]
 
 print(f"Total 11x11 games: {len(eleven_games)}")
@@ -37,20 +38,44 @@ def convert_moves_to_position(moves: str) -> np.array:
             print(f"Error processing move '{moves}': {e}")
     return posisition
 
-print("Example position from first game:")
-example_position = convert_moves_to_position(eleven_games[0]['moves'])
-print(example_position)
+json_out_batch = []
+for i in range(100000, len(eleven_games)):
+    game = eleven_games[i]
+    game_moves = ''
+    for move in game['moves'].split(' '):
+      game_moves += move + ' '
+      position = convert_moves_to_position(game_moves.strip())
+      outcome = 1 if game['winner'] == 'red' else -1
+
+      json_out_batch.append({
+          'position': position.tolist(),
+          'outcome': outcome
+      })
+with open(f'./data/validation_11x11_games.json', 'w') as f:
+     json.dump(json_out_batch, f)
+
+print("Validation made")
+
+print(f"Total processed positions: {len(json_out_batch)}")
 
 
-json_out = []
+for index in range(100000):
 
-for game in eleven_games:
-    position = convert_moves_to_position(game['moves'])
-    outcome = 1 if game['winner'] == 'red' else -1
-    json_out.append({
-        'position': position.tolist(),
-        'outcome': outcome
-    })
-    
-with open('processed_11x11_games.json', 'w') as f:
-    json.dump(json_out, f)
+  game = eleven_games[index]
+  game_moves = ''
+  for move in game['moves'].split(' '):
+      game_moves += move + ' '
+      position = convert_moves_to_position(game_moves.strip())
+      outcome = 1 if game['winner'] == 'red' else -1
+
+      json_out_batch.append({
+          'position': position.tolist(),
+          'outcome': outcome
+      })
+
+with open(f'./data/train_11x11_games.json', 'w') as f:
+     json.dump(json_out_batch, f)
+
+print("Train made")
+
+print(f"Total processed positions: {len(json_out_batch)}")
