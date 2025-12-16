@@ -165,13 +165,17 @@ class HexModelInference:
 
         with torch.no_grad():
             output_policy, output_value = self.model(input_tensor)
+            
+        # Apply softmax to policy logits to get probabilities
+        policy_probs = F.softmax(output_policy, dim=1)
         
-        policy = output_policy.cpu().numpy().reshape(11, 11)  # Shape: (11, 11)
+        policy = policy_probs.cpu().numpy().reshape(11, 11)  # Shape: (11, 11)
         value = output_value.cpu().item()  # Scalar
         
         return policy, value
 
-def train():
+
+def train2():
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     print(f"Using device: {device}")
