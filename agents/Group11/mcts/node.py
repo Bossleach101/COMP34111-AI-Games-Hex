@@ -62,29 +62,28 @@ class Node:
 
         return child
 
-    def expand_all(self):
-        """Fully expand node by creating all children at once"""
+    def expand_with_policy(self, policy_vector):
+        """
+        Expand node by creating all children, using the policy vector for priors.
+        policy_vector: 11x11 numpy array of probabilities
+        """
         if self.is_fully_expanded() or self.is_terminal():
-            return None
+            return
 
         valid_moves = self.untried_moves.copy()
-        num_moves = len(valid_moves)
-
-        # Uniform prior for now - can be replaced with neural network policy
-        uniform_prior = 1.0 / num_moves if num_moves > 0 else 1.0
-
-        # Create all children at once
+        
+        # Create all children
         for move in valid_moves:
+            r, c = move
+            prior = policy_vector[r, c]
+            
             new_state = self.state.copy()
             player = new_state.get_current_player()
             new_state.make_move(move, player)
 
-            child = Node(new_state, parent=self, move=move, prior=uniform_prior,
+            child = Node(new_state, parent=self, move=move, prior=prior,
                         use_move_heuristic=self.use_move_heuristic)
             self.children.append(child)
 
         # Clear untried moves since we've expanded all
         self.untried_moves = []
-
-        # Return a random child for simulation (or the first one)
-        return self.children[0] if self.children else None

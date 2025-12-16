@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import json
 import os
-from utils import HexPlanes
+from agents.Group11.utils import HexPlanes
 
 class HexConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, bias=True):
@@ -137,16 +137,16 @@ class HexModelInference:
         use_cuda = torch.cuda.is_available()
         device = torch.device("cuda" if use_cuda else "cpu")
         self.model = HexNet()
-        self.model.load_state_dict(torch.load(modelpath, map_location=device))
+        
+        # Use weights_only=True for security and to silence warnings (PyTorch 2.0+)
+        # This is supported in torch 2.5.1
+        self.model.load_state_dict(torch.load(modelpath, map_location=device, weights_only=True))
+        
         self.model.to(device)
         self.model.eval()
-        # Optimize model with TorchScript
-        try:
-            self.model = torch.jit.script(self.model)
-        except Exception as e:
-            print(f"Warning: Could not script model: {e}")
+        
+        # Removed JIT compilation as it was causing segmentation faults in the Docker environment
         self.device = device
-        self.model.eval()
 
     def predict(self, board_state, current_player):
         """
