@@ -3,12 +3,33 @@ from agents.Group11.mcts.node import Node
 import random
 import numpy as np
 
+"""
+MCTS with switchable selection policies (PUCT vs UCT)
+
+Usage examples:
+    # Use PUCT (default) - leverages neural network policy priors
+    mcts = MCTS(predictor, exploration_constant=0.5, selection_policy="puct")
+
+    # Use classic UCT - ignores policy priors, uses only visit counts
+    mcts = MCTS(predictor, exploration_constant=1.41, selection_policy="uct")
+"""
+
 class MCTS:
-    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5):
+    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
+        """
+        Initialize MCTS
+
+        Args:
+            predictor: Neural network predictor for policy and value
+            first_to_play: Player who plays first (1 or 2)
+            exploration_constant: Exploration parameter (c_puct for PUCT, c for UCT)
+            selection_policy: "puct" or "uct" - selection policy to use
+        """
         init_state = [[0]*11 for _ in range(11)]
         self.root = Node(Board(init_state, first_to_play))
         self.exploration_constant = exploration_constant
         self.predictor = predictor
+        self.selection_policy = selection_policy
     
     def search(self, iterations=1000):
         """Run MCTS search for given number of iterations"""
@@ -58,13 +79,13 @@ class MCTS:
             
             self.backpropagate(node, reward)
 
-        # Return best move using PUCT with c_param=0 (pure exploitation)
-        return self.root.best_child(c_param=0).move
+        # Return best move with c_param=0 (pure exploitation)
+        return self.root.best_child(c_param=0, policy=self.selection_policy).move
 
     def select(self, node):
-        """Select a node to expand using tree policy with PUCT"""
+        """Select a node to expand using tree policy (PUCT or UCT)"""
         while not node.is_terminal() and node.is_fully_expanded():
-            node = node.best_child(self.exploration_constant)
+            node = node.best_child(self.exploration_constant, policy=self.selection_policy)
         return node
     
     def expand_and_evaluate(self, node):

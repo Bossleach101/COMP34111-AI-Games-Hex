@@ -19,20 +19,7 @@ class Node:
     def is_terminal(self):
         return self.state.is_terminal()
 
-    def best_child(self, c_param=1.41, policy="puct"):
-        """
-        Select best child using PUCT or UCT formula
-
-        Args:
-            c_param: Exploration parameter
-            policy: "puct" or "uct" - selection policy to use
-        """
-        if policy == "uct":
-            return self.best_child_uct(c_param)
-        else:  # Default to PUCT
-            return self.best_child_puct(c_param)
-
-    def best_child_puct(self, c_param=1.41):
+    def best_child(self, c_param=1.41):
         """Select best child using PUCT formula (Predictor + UCT)"""
         choices_weights = []
         for child in self.children:
@@ -45,22 +32,6 @@ class Node:
             u_value = c_param * child.prior * math.sqrt(self.visits) / (1 + child.visits)
             puct_value = q_value + u_value
             choices_weights.append(puct_value)
-
-        return self.children[choices_weights.index(max(choices_weights))]
-
-    def best_child_uct(self, c_param=1.41):
-        """Select best child using classic UCT formula"""
-        choices_weights = []
-        for child in self.children:
-            if child.visits == 0:
-                # Give unvisited children high priority
-                choices_weights.append(float('inf'))
-            else:
-                q_value = child.value / child.visits
-                # UCT formula: Q(s,a) + c * sqrt(ln(N(s)) / N(s,a))
-                u_value = c_param * math.sqrt(math.log(self.visits) / child.visits)
-                uct_value = q_value + u_value
-                choices_weights.append(uct_value)
 
         return self.children[choices_weights.index(max(choices_weights))]
 
@@ -91,28 +62,29 @@ class Node:
 
         return child
 
-    def expand_with_policy(self, policy_vector):
-        """
-        Expand node by creating all children, using the policy vector for priors.
-        policy_vector: 11x11 numpy array of probabilities
-        """
+    def expand_all(self):
+        """Fully expand node by creating all children at once"""
         if self.is_fully_expanded() or self.is_terminal():
-            return
+            return None
 
         valid_moves = self.untried_moves.copy()
-        
-        # Create all children
+        num_moves = len(valid_moves)
+
+        # Uniform prior for now - can be replaced with neural network policy
+        uniform_prior = 1.0 / num_moves if num_moves > 0 else 1.0
+
+        # Create all children at once
         for move in valid_moves:
-            r, c = move
-            prior = policy_vector[r, c]
-            
             new_state = self.state.copy()
             player = new_state.get_current_player()
             new_state.make_move(move, player)
 
-            child = Node(new_state, parent=self, move=move, prior=prior,
+            child = Node(new_state, parent=self, move=move, prior=uniform_prior,
                         use_move_heuristic=self.use_move_heuristic)
             self.children.append(child)
 
         # Clear untried moves since we've expanded all
         self.untried_moves = []
+
+        # Return a random child for simulation (or the first one)
+        return self.children[0] if self.children else None

@@ -34,6 +34,22 @@ class Board:
                 if self.board[i][j] == 0:
                     moves.append((i, j))
 
+        # If heuristic enabled and there are pieces on the board, filter moves
+        if use_heuristic and moves:
+            # Check if board is empty
+            has_pieces = any(self.board[i][j] != 0 for i in range(self.size) for j in range(self.size))
+
+            if has_pieces:
+                # Only consider moves within max_distance of existing pieces
+                filtered_moves = []
+                for move in moves:
+                    if self._is_near_piece(move, max_distance):
+                        filtered_moves.append(move)
+
+                # If filtering resulted in valid moves, use them; otherwise use all moves
+                if filtered_moves:
+                    return filtered_moves
+
         return moves
 
     def _is_near_piece(self, move, max_distance):

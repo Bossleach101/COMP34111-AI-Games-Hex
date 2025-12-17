@@ -20,7 +20,7 @@ class Group11Agent(AgentBase):
         
         # Initialize MCTS
         # Assuming Red always plays first in the game logic
-        self.mcts_agent = mcts.MCTS(predictor=self.predictor, first_to_play=1, exploration_constant=0.5)
+        self.mcts_agent = mcts.MCTS(predictor=self.predictor, first_to_play=1, exploration_constant=0.5, selection_policy="uct")
 
     def make_move(self, turn: int, board: Board, opp_move: Move | None) -> Move:
         if opp_move:
