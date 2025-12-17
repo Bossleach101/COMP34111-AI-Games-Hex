@@ -83,6 +83,31 @@ class HexDataset(Dataset):
     def __init__(self, data_path):
         with open(data_path, 'r') as f:
             self.data = json.load(f)
+        
+        # Pre-calculate valid next moves
+        self.next_move_indices = np.full(len(self.data), -1, dtype=np.int32)
+        
+        # We can iterate and check stone counts to find boundaries
+        # This assumes data is sequential
+        print("Processing dataset for move targets...")
+        for i in range(len(self.data) - 1):
+            # Quick check: if next state has exactly 1 more stone, it's a valid next move
+            # We can optimize by just checking stone counts without full array creation if possible,
+            # but here we load the full json so we have the lists.
+            # Accessing list of lists is fast.
+            
+            # Heuristic: Check if next board has +1 stone count
+            # Flattening to count non-zeros
+            curr_board = self.data[i]['position']
+            next_board = self.data[i+1]['position']
+            
+            # Count stones (sum of absolute values or just non-zeros)
+            # Since values are 0, 1, -1, we can just count non-zeros
+            curr_stones = sum(1 for row in curr_board for x in row if x != 0)
+            next_stones = sum(1 for row in next_board for x in row if x != 0)
+            
+            if next_stones == curr_stones + 1:
+                self.next_move_indices[i] = i + 1
             
     def __len__(self):
         return len(self.data)
@@ -103,8 +128,24 @@ class HexDataset(Dataset):
         features = torch.from_numpy(features).float()
         outcome = torch.tensor(outcome, dtype=torch.float32)
         
-        # Dummy policy target since it's missing in the dataset
-        policy_target = torch.zeros(121, dtype=torch.float32) 
+        # Policy Target
+        next_idx = self.next_move_indices[idx]
+        if next_idx != -1:
+            next_board = np.array(self.data[next_idx]['position'], dtype=np.int8)
+            diff = next_board - board
+            # Find the index of the move
+            # diff will have exactly one non-zero element (1 or -1)
+            move_indices = np.argwhere(diff != 0)
+            if len(move_indices) == 1:
+                r, c = move_indices[0]
+                target_move = r * 11 + c
+            else:
+                # Should not happen if stone count check passed, but safety fallback
+                target_move = -100
+        else:
+            target_move = -100 # Ignore index for CrossEntropyLoss
+            
+        policy_target = torch.tensor(target_move, dtype=torch.long)
         
         return features, policy_target, outcome
 
@@ -119,15 +160,16 @@ def train(model, device, train_loader, optimizer, epoch):
         # Value loss: MSE
         loss_v = F.mse_loss(output_value.view(-1), target_value)
         
-        # Policy loss: CrossEntropy (masked here because we don't have targets)
-        loss_p = 0 
+        # Policy loss: CrossEntropy
+        # target_policy contains indices of the move (0-120) or -100 to ignore
+        loss_p = F.cross_entropy(output_policy, target_policy, ignore_index=-100)
         
         loss = loss_v + loss_p
         loss.backward()
         optimizer.step()
         
         if batch_idx % 100 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}\tLoss_P: {loss_p.item():.6f}\tLoss_V: {loss_v.item():.6f}')
 
 class HexModelInference:
     """
@@ -197,8 +239,9 @@ def train2():
         train(model, device, train_loader, optimizer, epoch)
         
     # Save model
-    torch.save(model.state_dict(), "hex_model.pth")
-    print("Model saved to hex_model.pth")
+    save_path = os.path.join(os.path.dirname(__file__), "hex_model.pth")
+    torch.save(model.state_dict(), save_path)
+    print(f"Model saved to {save_path}")
 
 def main():
     board = np.zeros((11, 11), dtype=int)

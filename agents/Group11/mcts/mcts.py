@@ -79,7 +79,7 @@ class MCTS:
         
         # Predict
         policy, value = self.predictor.predict(board_np, cnn_player)
-        print("q value estimated is ", value)
+        # print("q value estimated is ", value)
         
         # Expand node with policy
         node.expand_with_policy(policy)
