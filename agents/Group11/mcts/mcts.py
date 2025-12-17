@@ -59,6 +59,7 @@ class MCTS:
         
         # Predict
         policy, value = self.predictor.predict(board_np, cnn_player)
+        print("q value estimated is ", value)
         
         # Expand node with policy
         node.expand_with_policy(policy)
@@ -71,7 +72,7 @@ class MCTS:
         # If CNN says Blue wins (value=-1), this is GOOD for Blue (-1). Reward should be +1.
         # Formula: value * parent_player = value * (-mcts_player)
         
-        return value * (-mcts_player)
+        return value * (mcts_player)
 
     def backpropagate(self, node, reward):
         """
