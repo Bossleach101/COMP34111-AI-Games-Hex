@@ -1,168 +1,134 @@
+import numpy as np
+from scipy.ndimage import label
+from scipy.ndimage import binary_dilation
+
 class Board:
-    def __init__(self, board, first_to_play = 1):
-        self.board = board
-        self.size = len(board)
+    def __init__(self, board, first_to_play=1):
+        # Ensure board is a numpy array
+        if not isinstance(board, np.ndarray):
+            self.board = np.array(board, dtype=int)
+        else:
+            self.board = board
+            
+        self.size = self.board.shape[0]
         self.first_to_play = first_to_play
+        
+        # Hex neighborhood structure for scipy.ndimage.label
+        # Corresponds to:
+        # (-1, 0), (-1, 1)
+        # (0, -1), (0, 1)
+        # (1, -1), (1, 0)
+        self.hex_structure = np.array([
+            [0, 1, 1],
+            [1, 1, 1],
+            [1, 1, 0]
+        ], dtype=int)
     
     def copy(self):
         """Create a deep copy of the board"""
-        return Board([row[:] for row in self.board])
+        return Board(self.board.copy(), self.first_to_play)
     
     def eval(self):
         """
-        Evaluate the board state from Player 2's perspective.
-        Returns: 1 if Player 2 wins, -1 if Player 1 wins, 0 otherwise
+        Evaluate the board state.
+        Returns: 1 if Red (1) wins, -1 if Blue (-1) wins, 0 otherwise
         """
         winner = self.get_winner()
-        if winner == 2:
-            return 1  # Player 2 (AI) wins
-        elif winner == 1:
-            return -1  # Player 1 (opponent) wins
-        return 0  # Draw or ongoing
+        if winner == 1:
+            return 1
+        elif winner == -1:
+            return -1
+        return 0
     
-    def get_valid_moves(self, use_heuristic=False, max_distance=2):
+    def get_valid_moves(self):
         """
         Return list of valid moves.
-
-        Args:
-            use_heuristic: If True, only return moves near existing pieces
-            max_distance: Maximum distance from existing pieces to consider
         """
-        moves = []
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.board[i][j] == 0:
-                    moves.append((i, j))
-
-        # If heuristic enabled and there are pieces on the board, filter moves
-        if use_heuristic and moves:
-            # Check if board is empty
-            has_pieces = any(self.board[i][j] != 0 for i in range(self.size) for j in range(self.size))
-
-            if has_pieces:
-                # Only consider moves within max_distance of existing pieces
-                filtered_moves = []
-                for move in moves:
-                    if self._is_near_piece(move, max_distance):
-                        filtered_moves.append(move)
-
-                # If filtering resulted in valid moves, use them; otherwise use all moves
-                if filtered_moves:
-                    return filtered_moves
+        # Get all empty cells
+        empty_indices = np.argwhere(self.board == 0)
+        moves = [tuple(x) for x in empty_indices]
 
         return moves
 
-    def _is_near_piece(self, move, max_distance):
-        """Check if a move is within max_distance of any existing piece"""
-        row, col = move
-
-        # Only check cells within the bounding box of max_distance
-        min_row = max(0, row - max_distance)
-        max_row = min(self.size - 1, row + max_distance)
-        min_col = max(0, col - max_distance)
-        max_col = min(self.size - 1, col + max_distance)
-
-        for i in range(min_row, max_row + 1):
-            for j in range(min_col, max_col + 1):
-                if self.board[i][j] != 0:
-                    # Use hex distance (max of absolute differences in hex coordinates)
-                    dist = max(abs(row - i), abs(col - j), abs((row - col) - (i - j)))
-                    if dist <= max_distance:
-                        return True
-        return False
-    
     def make_move(self, move, player):
         """Make a move on the board"""
-        i, j = move
-        self.board[i][j] = player
+        self.board[move] = player
     
     def is_terminal(self):
-        """Check if game is over (someone won or board is full)"""
-        return self.get_winner() is not None or len(self.get_valid_moves()) == 0
-    
-    def _dfs(self, player, current, end_cells, visited):
-        """DFS to check if we can reach any end cell from current position"""
-        if current in visited:
-            return False
-
-        visited.add(current)
-
-        # Check if we reached an end cell
-        if current in end_cells:
-            return True
-
-        row, col = current
-
-        # Check all 6 neighbors in Hex (adjacent cells)
-        neighbors = [
-            (row-1, col), (row-1, col+1),  # top-left, top-right
-            (row, col-1), (row, col+1),    # left, right
-            (row+1, col-1), (row+1, col)   # bottom-left, bottom-right
-        ]
-
-        for next_row, next_col in neighbors:
-            # Check bounds
-            if 0 <= next_row < self.size and 0 <= next_col < self.size:
-                # Check if it's the same player's cell
-                if self.board[next_row][next_col] == player:
-                    if self._dfs(player, (next_row, next_col), end_cells, visited):
-                        return True
-
-        return False
-
-    def _has_path(self, player, start_cells, end_cells):
-        """Check if there's a path from any start cell to any end cell for player"""
-        visited = set()
-
-        # Try starting from each cell in start_cells
-        for start in start_cells:
-            if self.board[start[0]][start[1]] == player:
-                if self._dfs(player, start, end_cells, visited):
-                    return True
-
-        return False
+        """Check if game is over"""
+        return self.get_winner() is not None or not np.any(self.board == 0)
         
     def get_winner(self):
         """
         Return winner for Hex game.
-        Player 1 connects top-bottom (vertical)
-        Player 2 connects left-right (horizontal)
-        Returns: 1, 2, or None
+        Player 1 (Red) connects top-bottom (rows 0 to size-1)
+        Player -1 (Blue) connects left-right (cols 0 to size-1)
+        Returns: 1, -1, or None
         """
-        # Check if Player 1 (vertical) has won
-        if self._has_path(1,
-                         [(0, j) for j in range(self.size)],  # Top row
-                         [(self.size-1, j) for j in range(self.size)]):  # Bottom row
-            return 1
+        # Check Red (1) - Vertical
+        red_stones = (self.board == 1)
+        if np.any(red_stones[0, :]) and np.any(red_stones[-1, :]):
+            labeled, n_features = label(red_stones, structure=self.hex_structure)
+            # Check if any label appears in both top and bottom rows
+            top_labels = np.unique(labeled[0, :])
+            bottom_labels = np.unique(labeled[-1, :])
+            # 0 is background, ignore it
+            top_labels = top_labels[top_labels != 0]
+            bottom_labels = bottom_labels[bottom_labels != 0]
+            
+            if np.intersect1d(top_labels, bottom_labels).size > 0:
+                return 1
 
-        # Check if Player 2 (horizontal) has won
-        if self._has_path(2,
-                         [(i, 0) for i in range(self.size)],  # Left column
-                         [(i, self.size-1) for i in range(self.size)]):  # Right column
-            return 2
+        # Check Blue (-1) - Horizontal
+        blue_stones = (self.board == -1)
+        if np.any(blue_stones[:, 0]) and np.any(blue_stones[:, -1]):
+            labeled, n_features = label(blue_stones, structure=self.hex_structure)
+            # Check if any label appears in both left and right columns
+            left_labels = np.unique(labeled[:, 0])
+            right_labels = np.unique(labeled[:, -1])
+            # 0 is background
+            left_labels = left_labels[left_labels != 0]
+            right_labels = right_labels[right_labels != 0]
+            
+            if np.intersect1d(left_labels, right_labels).size > 0:
+                return -1
 
         return None
 
     def get_current_player(self):
         """
-        Determine whose turn it is based on the number of pieces on the board.
-        Player 1 goes first, so if there are equal pieces, it's Player 1's turn.
-        If Player 1 has more pieces, it's Player 2's turn.
+        Determine whose turn it is.
         """
-        player1_count = sum(row.count(1) for row in self.board)
-        player2_count = sum(row.count(2) for row in self.board)
+        count_1 = np.sum(self.board == 1)
+        count_neg_1 = np.sum(self.board == -1)
 
-        # Player 1 goes first
-        # If equal pieces or Player 2 has more, it's Player 1's turn
-        # If Player 1 has more, it's Player 2's turn
         if self.first_to_play == 1:
-            if player1_count > player2_count:
-                return 2
+            if count_1 > count_neg_1:
+                return -1
             else:
                 return 1
         else:
-            if player1_count > player2_count:
+            if count_1 > count_neg_1:
                 return 1
             else:
-                return 2
+                return -1
+
+    def find_winning_move(self, player):
+        """
+        Check if there is any move that immediately wins for the given player.
+        Returns the move (r, c) or None.
+        """
+        
+        valid_moves = self.get_valid_moves()
+        
+        for move in valid_moves:
+            # Try move
+            self.board[move] = player
+            is_win = (self.get_winner() == player)
+            # Undo move
+            self.board[move] = 0
+            
+            if is_win:
+                return move
+        return None
 
