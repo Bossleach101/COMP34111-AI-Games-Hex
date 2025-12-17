@@ -47,6 +47,7 @@ class Board:
         # Get all empty cells
         empty_indices = np.argwhere(self.board == 0)
         moves = [tuple(x) for x in empty_indices]
+
         return moves
 
     def make_move(self, move, player):
