@@ -40,50 +40,13 @@ class Board:
             return -1
         return 0
     
-    def get_valid_moves(self, use_heuristic=False, max_distance=2):
+    def get_valid_moves(self):
         """
         Return list of valid moves.
         """
         # Get all empty cells
         empty_indices = np.argwhere(self.board == 0)
         moves = [tuple(x) for x in empty_indices]
-
-        if not use_heuristic or not moves:
-            return moves
-
-        # Check if board is empty (no pieces)
-        if np.all(self.board == 0):
-            return moves
-
-        # Heuristic: Filter moves near existing pieces
-        # Create a mask of occupied cells
-        occupied = (self.board != 0)
-        
-        # Dilate the occupied mask to find neighbors within max_distance
-        # We can use binary_dilation from scipy.ndimage
-                
-        # Create a structure for dilation based on max_distance
-        # For max_distance=1, it's the hex_structure.
-        # For max_distance=2, we iterate dilation twice or precompute structure.
-        # Iterating is easier.
-        
-        mask = occupied
-        for _ in range(max_distance):
-            mask = binary_dilation(mask, structure=self.hex_structure)
-            
-        # Valid moves are empty cells that are in the dilated mask
-        # (i.e., near occupied cells)
-        # But we must exclude occupied cells themselves (already handled by checking empty_indices)
-        
-        # Filter moves
-        filtered_moves = []
-        for r, c in moves:
-            if mask[r, c]:
-                filtered_moves.append((r, c))
-                
-        if filtered_moves:
-            return filtered_moves
-            
         return moves
 
     def make_move(self, move, player):
@@ -154,9 +117,8 @@ class Board:
         Check if there is any move that immediately wins for the given player.
         Returns the move (r, c) or None.
         """
-        # Only check moves near existing pieces (heuristic) as a winning move must connect things.
-        # If board is empty or sparse, no immediate win is possible anyway.
-        valid_moves = self.get_valid_moves(use_heuristic=True, max_distance=2)
+        
+        valid_moves = self.get_valid_moves()
         
         for move in valid_moves:
             # Try move

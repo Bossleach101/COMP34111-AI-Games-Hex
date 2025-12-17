@@ -10,8 +10,7 @@ class Node:
         self.value = 0
         self.prior = prior  # Prior probability for PUCT
         self.use_move_heuristic = use_move_heuristic
-        # Use heuristic to filter moves (only consider moves near existing pieces)
-        self.untried_moves = state.get_valid_moves(use_heuristic=use_move_heuristic, max_distance=2)
+        self.untried_moves = state.get_valid_moves()
 
     def is_fully_expanded(self):
         return len(self.untried_moves) == 0 and len(self.children) > 0
