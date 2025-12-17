@@ -2,6 +2,7 @@ from agents.Group11.mcts.board import Board
 from agents.Group11.mcts.node import Node
 import random
 import numpy as np
+from src.Colour import Colour
 
 """
 MCTS with switchable selection policies (PUCT vs UCT)
@@ -16,7 +17,7 @@ Usage examples:
 
 class MCTS:
 
-    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
+    def __init__(self, colour, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
         """
         Initialize MCTS
 
@@ -31,8 +32,15 @@ class MCTS:
         self.exploration_constant = exploration_constant
         self.predictor = predictor
         self.selection_policy = selection_policy
+        self.colour = colour
+
+    def depth(self, curr, depth=1):
+        if not curr.children:
+            return 0
+        return 1+max(self.depth(i) for i in curr.children)
     
     def search(self, iterations=1000):
+        print("test")
         """Run MCTS search for given number of iterations"""
         for _ in range(iterations):
             node = self.select(self.root)
@@ -54,8 +62,9 @@ class MCTS:
                 reward = self.expand_and_evaluate(node)
             
             self.backpropagate(node, reward)
-            
-        best_child = max(self.root.children, key=lambda child: child.visits)
+        
+        print("depth", self.depth(self.root))
+        best_child = max(self.root.children, key=lambda child: child.value/max(1,child.visits))
         return best_child.move
 
     def select(self, node):
@@ -79,7 +88,6 @@ class MCTS:
         
         # Predict
         policy, value = self.predictor.predict(board_np, cnn_player)
-        print("q value estimated is ", value)
         
         # Expand node with policy
         node.expand_with_policy(policy)
@@ -92,7 +100,10 @@ class MCTS:
         # If CNN says Blue wins (value=-1), this is GOOD for Blue (-1). Reward should be +1.
         # Formula: value * parent_player = value * (-mcts_player)
         
-        return value * (mcts_player)
+        if self.colour == Colour.RED:
+            return value * mcts_player
+
+        return value * (-mcts_player)
 
     def backpropagate(self, node, reward):
         """
