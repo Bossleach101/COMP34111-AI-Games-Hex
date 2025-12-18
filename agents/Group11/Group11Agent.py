@@ -40,6 +40,7 @@ class Group11Agent(AgentBase):
         self.mcts_agent = mcts.MCTS(**mcts_params)
         self._pending_swap_sync = False
         self._last_colour = self.colour
+        self._swapped_last_turn = False
 
 
     def make_move(self, turn: int, board: Board, opp_move: Move | None) -> Move:
@@ -60,7 +61,16 @@ class Group11Agent(AgentBase):
         if swap_move:
             # Tree will be re-synchronised once our colour updates
             self._pending_swap_sync = True
+            self._swapped_last_turn = True
             return swap_move
+
+        if self._swapped_last_turn and self.colour == Colour.RED:
+            post_swap_move = self._post_swap_red_follow_up(board)
+            if post_swap_move:
+                self._swapped_last_turn = False
+                self.mcts_agent.update_root((post_swap_move.x, post_swap_move.y), self.player_id)
+                return post_swap_move
+            self._swapped_last_turn = False
 
         opening_move = self._opening_book(turn, board, opp_move)
         if opening_move:
@@ -99,6 +109,32 @@ class Group11Agent(AgentBase):
         new_root = MCTSNode(MCTSBoard(board_array, self._mcts_params.get('first_to_play', 1)))
         self.mcts_agent = mcts.MCTS(**self._mcts_params)
         self.mcts_agent.root = new_root
+
+    def _post_swap_red_follow_up(self, board: Board) -> Move | None:
+        size = board.size
+        red_stones = [
+            (x, y)
+            for x in range(size)
+            for y in range(size)
+            if board.tiles[x][y].colour == Colour.RED
+        ]
+
+        if not red_stones:
+            return None
+
+        # Use the first Red stone found (should be the inherited opener)
+        x, y = red_stones[0]
+        direction = 1 if x <= size // 2 else -1
+        candidates = [
+            (x + direction, y),
+            (x - direction, y),
+        ]
+
+        for cx, cy in candidates:
+            if 0 <= cx < size and 0 <= cy < size and board.tiles[cx][cy].colour is None:
+                return Move(cx, cy)
+
+        return None
 
     def _board_to_array(self, board: Board) -> np.ndarray:
         array = np.zeros((board.size, board.size), dtype=int)
@@ -149,13 +185,10 @@ class Group11Agent(AgentBase):
                 return Move(preferred[0], preferred[1])
 
             if turn == 3:
+                # Preferred extension for the 1,8 opener: step down toward Blue edge
                 candidates = [
-                    (center - 1, center),
-                    (center, center - 1),
-                    (center, center + 1),
-                    (center + 1, center),
-                    (center - 1, center - 1),
-                    (center + 1, center + 1),
+                    (2, board.size - 4),  # (2,7) on 11x11
+                    (2, board.size - 3),  # (2,8) on 11x11
                 ]
                 for x, y in candidates:
                     if board.tiles[x][y].colour is None:
@@ -171,12 +204,45 @@ class Group11Agent(AgentBase):
 
             near_center = [
                 (center, center - 1),
-                (center - 1, center),
                 (center, center + 1),
-                (center + 1, center),
+                (center - 1, center + 1),
+                (center + 1, center - 1),
             ]
             for x, y in near_center:
                 if board.tiles[x][y].colour is None:
                     return Move(x, y)
+
+        if self.colour == Colour.BLUE and turn == 4:
+            progression_move = self._blue_progression_move(board)
+            if progression_move:
+                return progression_move
+
+        return None
+
+    def _blue_progression_move(self, board: Board) -> Move | None:
+        size = board.size
+        blue_stones = [
+            (x, y)
+            for x in range(size)
+            for y in range(size)
+            if board.tiles[x][y].colour == Colour.BLUE
+        ]
+
+        if not blue_stones:
+            return None
+
+        # Prefer moves that extend horizontally toward the nearest edge
+        blue_stones.sort(key=lambda pos: pos[1])
+        for x, y in blue_stones:
+            direction = 1 if y <= size // 2 else -1
+            candidates = [
+                (x, y + direction),
+                (x - 1, y + direction),
+                (x + 1, y + direction),
+            ]
+
+            for cx, cy in candidates:
+                if 0 <= cx < size and 0 <= cy < size and board.tiles[cx][cy].colour is None:
+                    return Move(cx, cy)
 
         return None
