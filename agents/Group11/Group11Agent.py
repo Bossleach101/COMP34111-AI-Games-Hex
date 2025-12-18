@@ -41,6 +41,9 @@ class Group11Agent(AgentBase):
         self._pending_swap_sync = False
         self._last_colour = self.colour
         self._swapped_last_turn = False
+        self._initial_colour = colour
+        self._swap_to_blue_pending_center = False
+        self._swap_to_blue_follow_up_pending = False
 
 
     def make_move(self, turn: int, board: Board, opp_move: Move | None) -> Move:
@@ -52,9 +55,16 @@ class Group11Agent(AgentBase):
             self._pending_swap_sync = False
             self._last_colour = self.colour
 
+        self._handle_swap_to_blue_transition(opp_move)
+
         if opp_move and not opp_move.is_swap():
             # Update tree with opponent's move
             self.mcts_agent.update_root((opp_move.x, opp_move.y), self.opp_player_id)
+
+        post_swap_blue_move = self._post_swap_blue_follow_up(board)
+        if post_swap_blue_move:
+            self.mcts_agent.update_root((post_swap_blue_move.x, post_swap_blue_move.y), self.player_id)
+            return post_swap_blue_move
 
         # Opening book and swap consideration
         swap_move = self._consider_swap(turn, board, opp_move)
@@ -104,11 +114,39 @@ class Group11Agent(AgentBase):
         self.player_id = 1 if self.colour == Colour.RED else -1
         self.opp_player_id = -self.player_id
 
+    def _handle_swap_to_blue_transition(self, opp_move: Move | None) -> None:
+        if (
+            self._initial_colour == Colour.RED
+            and self.colour == Colour.BLUE
+            and opp_move is not None
+            and opp_move.is_swap()
+        ):
+            self._swap_to_blue_pending_center = True
+            self._swap_to_blue_follow_up_pending = False
+
     def _sync_tree_with_board(self, board: Board):
         board_array = self._board_to_array(board)
         new_root = MCTSNode(MCTSBoard(board_array, self._mcts_params.get('first_to_play', 1)))
         self.mcts_agent = mcts.MCTS(**self._mcts_params)
         self.mcts_agent.root = new_root
+
+    def _post_swap_blue_follow_up(self, board: Board) -> Move | None:
+        if self.colour != Colour.BLUE:
+            return None
+
+        if self._swap_to_blue_pending_center:
+            self._swap_to_blue_pending_center = False
+            if self._can_play_at(board, 5, 5):
+                self._swap_to_blue_follow_up_pending = True
+                return Move(5, 5)
+
+        if self._swap_to_blue_follow_up_pending:
+            self._swap_to_blue_follow_up_pending = False
+            follow_up_move = self._horizontal_adjacent_move(board, 5, 5)
+            if follow_up_move:
+                return follow_up_move
+
+        return None
 
     def _post_swap_red_follow_up(self, board: Board) -> Move | None:
         size = board.size
@@ -245,4 +283,14 @@ class Group11Agent(AgentBase):
                 if 0 <= cx < size and 0 <= cy < size and board.tiles[cx][cy].colour is None:
                     return Move(cx, cy)
 
+        return None
+
+    def _can_play_at(self, board: Board, x: int, y: int) -> bool:
+        return 0 <= x < board.size and 0 <= y < board.size and board.tiles[x][y].colour is None
+
+    def _horizontal_adjacent_move(self, board: Board, x: int, y: int) -> Move | None:
+        candidates = [(x, y - 1), (x, y + 1)]
+        for cx, cy in candidates:
+            if self._can_play_at(board, cx, cy):
+                return Move(cx, cy)
         return None
