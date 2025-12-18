@@ -3,18 +3,43 @@ from agents.Group11.mcts.node import Node
 import random
 import numpy as np
 
+"""
+MCTS with switchable selection policies (PUCT vs UCT)
+
+Usage examples:
+    # Use PUCT (default) - leverages neural network policy priors
+    mcts = MCTS(predictor, exploration_constant=0.5, selection_policy="puct")
+
+    # Use classic UCT - ignores policy priors, uses only visit counts
+    mcts = MCTS(predictor, exploration_constant=1.41, selection_policy="uct")
+"""
+
 class MCTS:
-    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5):
-        init_state = [[0]*11 for _ in range(11)]
+
+    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
+        """
+        Initialize MCTS
+
+        Args:
+            predictor: Neural network predictor for policy and value
+            first_to_play: Player who plays first (1 or 2)
+            exploration_constant: Exploration parameter (c_puct for PUCT, c for UCT)
+            selection_policy: "puct" or "uct" - selection policy to use
+        """
+        init_state = np.zeros((11, 11), dtype=int)
         self.root = Node(Board(init_state, first_to_play))
         self.exploration_constant = exploration_constant
         self.predictor = predictor
+<<<<<<< HEAD
 
     def reset_to_board(self, board_state, first_to_play=1):
         """Rebuild the search tree from an explicit board layout."""
 
         copied_state = [row[:] for row in board_state]
         self.root = Node(Board(copied_state, first_to_play))
+=======
+        self.selection_policy = selection_policy
+>>>>>>> origin/main
     
     def search(self, iterations=1000):
         """Run MCTS search for given number of iterations"""
@@ -23,33 +48,8 @@ class MCTS:
             
             value = 0
             if node.is_terminal():
-                # Get winner from board: 1 or 2
+                # Get winner from board: 1 or -1
                 winner = node.state.get_winner()
-                if winner == 1:
-                    value = 1 # Red wins
-                elif winner == 2:
-                    value = -1 # Blue wins
-                else:
-                    value = 0 # Draw
-                
-                # Adjust value to be relative to the player who just moved?
-                # No, backpropagate flips it.
-                # We need to pass the absolute value (Red perspective) and let backpropagate handle it?
-                # Wait, backpropagate logic:
-                # node.value += reward
-                # reward = -reward
-                # node = node.parent
-                
-                # If node is Red (1) to play.
-                # If Red wins (value=1).
-                # node.value += 1. (Good for Red).
-                # Parent (Blue to play). reward = -1.
-                # parent.value += -1. (Bad for Blue).
-                # This works if we pass +1 for Red win, -1 for Blue win, AND adjust for current player?
-                
-                # Let's stick to: Reward is relative to the player at the node.
-                # If node is Red (1). Red wins. Reward = +1.
-                # If node is Blue (2). Blue wins. Reward = +1.
                 
                 current_player = node.state.get_current_player()
                 if winner == current_player:
@@ -63,14 +63,14 @@ class MCTS:
                 reward = self.expand_and_evaluate(node)
             
             self.backpropagate(node, reward)
-
-        # Return best move using PUCT with c_param=0 (pure exploitation)
-        return self.root.best_child(c_param=0).move
+            
+        best_child = max(self.root.children, key=lambda child: child.visits)
+        return best_child.move
 
     def select(self, node):
-        """Select a node to expand using tree policy with PUCT"""
+        """Select a node to expand using tree policy (PUCT or UCT)"""
         while not node.is_terminal() and node.is_fully_expanded():
-            node = node.best_child(self.exploration_constant)
+            node = node.best_child(self.exploration_constant, policy=self.selection_policy)
         return node
     
     def expand_and_evaluate(self, node):
@@ -79,30 +79,29 @@ class MCTS:
         Expand the node using the policy vector.
         Returns the value (reward) relative to the current player.
         """
-        # Convert board to numpy array for CNN
-        # MCTS Board: 0=Empty, 1=P1(Red), 2=P2(Blue)
-        # CNN Board: 0=Empty, 1=Red, -1=Blue
-        board_list = node.state.board
-        board_np = np.array(board_list, dtype=int)
-        board_np[board_np == 2] = -1
+        # Board is already numpy array with 1 and -1
+        board_np = node.state.board
         
         # Determine CNN current player
         mcts_player = node.state.get_current_player()
-        cnn_player = 1 if mcts_player == 1 else -1
+        cnn_player = mcts_player
         
         # Predict
         policy, value = self.predictor.predict(board_np, cnn_player)
+        # print("q value estimated is ", value)
         
         # Expand node with policy
         node.expand_with_policy(policy)
         
         # Value from CNN is +1 (Red Win) to -1 (Blue Win).
-        # We need to return reward relative to mcts_player.
-        # If mcts_player is 1 (Red): reward = value * 1 = value.
-        # If mcts_player is 2 (Blue): reward = value * -1 = -value.
-        # So reward = value * cnn_player
+        # We need to return reward relative to the PARENT of the leaf (the player who made the move).
+        # The parent of the leaf is the opponent of mcts_player.
+        # If mcts_player is 1 (Red), parent is -1 (Blue).
+        # If CNN says Red wins (value=1), this is BAD for Blue (-1). Reward should be -1.
+        # If CNN says Blue wins (value=-1), this is GOOD for Blue (-1). Reward should be +1.
+        # Formula: value * parent_player = value * (-mcts_player)
         
-        return value * cnn_player
+        return value * (mcts_player)
 
     def backpropagate(self, node, reward):
         """
