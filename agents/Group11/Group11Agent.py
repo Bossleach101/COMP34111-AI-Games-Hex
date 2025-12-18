@@ -23,11 +23,12 @@ class Group11Agent(AgentBase):
             'predictor': self.predictor,
             'first_to_play': 1,
             'exploration_constant': 1.41, # Default to 1.41
-            'selection_policy': "puct"
+            'selection_policy': "puct",
+            'colour':self.colour
         }
         
-        # Extract iterations if present, otherwise default to 500
-        self.iterations = mcts_kwargs.pop('iterations', 500)
+        # Extract iterations if present, otherwise default to 100
+        self.iterations = mcts_kwargs.pop('iterations', 100)
         
         # Override with kwargs
         mcts_params.update(mcts_kwargs)

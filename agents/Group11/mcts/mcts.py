@@ -2,6 +2,7 @@ from agents.Group11.mcts.board import Board
 from agents.Group11.mcts.node import Node
 import random
 import numpy as np
+from src.Colour import Colour
 
 """
 MCTS with switchable selection policies (PUCT vs UCT)
@@ -16,7 +17,7 @@ Usage examples:
 
 class MCTS:
 
-    def __init__(self, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
+    def __init__(self, colour, predictor, first_to_play=1, exploration_constant=0.5, selection_policy="puct"):
         """
         Initialize MCTS
 
@@ -31,6 +32,7 @@ class MCTS:
         self.exploration_constant = exploration_constant
         self.predictor = predictor
         self.selection_policy = selection_policy
+        self.colour = colour
     
     def search(self, iterations=1000):
         """Run MCTS search for given number of iterations"""
@@ -92,7 +94,7 @@ class MCTS:
         # If CNN says Blue wins (value=-1), this is GOOD for Blue (-1). Reward should be +1.
         # Formula: value * parent_player = value * (-mcts_player)
         
-        return value * (mcts_player)
+        return value * (-mcts_player)
 
     def backpropagate(self, node, reward):
         """
