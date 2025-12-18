@@ -1,1 +1,1 @@
-agents.Group11.RandomAgent RandomAgent
+agents.Group11.Group11Agent Group11Agent
