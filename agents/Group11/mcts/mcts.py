@@ -30,16 +30,7 @@ class MCTS:
         self.root = Node(Board(init_state, first_to_play))
         self.exploration_constant = exploration_constant
         self.predictor = predictor
-<<<<<<< HEAD
-
-    def reset_to_board(self, board_state, first_to_play=1):
-        """Rebuild the search tree from an explicit board layout."""
-
-        copied_state = [row[:] for row in board_state]
-        self.root = Node(Board(copied_state, first_to_play))
-=======
         self.selection_policy = selection_policy
->>>>>>> origin/main
     
     def search(self, iterations=1000):
         """Run MCTS search for given number of iterations"""
