@@ -2,8 +2,8 @@ from src.AgentBase import AgentBase
 from src.Board import Board
 from src.Colour import Colour
 from src.Move import Move
-import agents.Group11.mcts.mcts as mcts
-from agents.Group11.BoardEvaluator import HexModelInference
+import agents.Group011.mcts.mcts as mcts
+from agents.Group011.BoardEvaluator import HexModelInference
 import os
 
 class Group11Agent(AgentBase):

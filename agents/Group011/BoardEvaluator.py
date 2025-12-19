@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import json
 import os
-from agents.Group11.utils import HexPlanes
+from agents.Group011.utils import HexPlanes
 
 class HexConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, bias=True):

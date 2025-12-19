@@ -1,5 +1,5 @@
-from agents.Group11.mcts.board import Board
-from agents.Group11.mcts.node import Node
+from agents.Group011.mcts.board import Board
+from agents.Group011.mcts.node import Node
 import random
 import numpy as np
 from src.Colour import Colour

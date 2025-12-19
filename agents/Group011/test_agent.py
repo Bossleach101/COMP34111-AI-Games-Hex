@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.append(os.getcwd())
 
-from agents.Group11.Group11Agent import Group11Agent
+from agents.Group011.Group11Agent import Group11Agent
 from src.Colour import Colour
 from src.Board import Board
 from src.Move import Move
